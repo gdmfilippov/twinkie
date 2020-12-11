@@ -1,4 +1,6 @@
 node_modules
-/*.js
+**/*.js
 /!bin.js
 .idea
+**/*.d.ts
+**/*.map
