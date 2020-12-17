@@ -1,3 +1,5 @@
+import {ExpressionPart, isRawExpression, RawExpression} from './expression_extractor';
+
 /**
  * @license
  *
@@ -247,4 +249,29 @@ export function getFunctionName(functionExpression: string) {
   }
 
   return match[1];
+}
+
+export enum CheerioElementType {
+  Script = 'script',
+  Style = 'style',
+  Text = 'text',
+  Comment = 'comment',
+  Tag = 'tag',
+}
+
+export function isExpressionWithTheOnlyBinding(
+  parts: ExpressionPart[]
+): parts is [RawExpression] {
+  return parts.length === 1 && isRawExpression(parts[0]);
+}
+
+export function isTextOnlyExpression(
+  parts: ExpressionPart[]
+): parts is [string] {
+  return parts.length === 1 && !isRawExpression(parts[0]);
+}
+
+
+export function assertNever<T>(val: never): never {
+  throw new Error(`The value '${val}' is not expected`);
 }

@@ -1,5 +1,6 @@
 node_modules
 **/*.js
+app/out
 /!bin.js
 .idea
 **/*.d.ts

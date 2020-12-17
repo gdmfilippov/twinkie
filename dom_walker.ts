@@ -207,7 +207,7 @@
 import {AliasMap} from './types';
 import {isDomRepeat, isExpressionFunction, getFunctionName} from './utils';
 import {extractExpression} from './expression_extractor';
-const BLACKLISTED_TAGS = new Set(['style', 'script']);
+export const BLACKLISTED_TAGS = new Set(['style', 'script']);
 
 export interface AttributeExpression {
   attributeKey: string;
@@ -234,17 +234,18 @@ export function extractNodeContents(node: CheerioElement) {
 
   return null;
 }
+export type CloseTagCallback = () => void;
 
 export function walkNodes(
   node: CheerioElement,
   aliasMap: AliasMap,
-  fn: (node: CheerioElement, aliasMap: AliasMap) => void
+  fn: (node: CheerioElement, aliasMap: AliasMap) => void | CloseTagCallback
 ) {
   if (!node) {
     return;
   }
 
-  fn(node, aliasMap);
+  const closeNodeCallback = fn(node, aliasMap);
 
   const isDomRepeatNode = isDomRepeat(node);
   let itemAliasName: string | undefined = undefined;
@@ -278,5 +279,8 @@ export function walkNodes(
   ) {
     delete aliasMap[itemAliasName];
     delete aliasMap[indexAsAliasName];
+  }
+  if (closeNodeCallback) {
+    closeNodeCallback();
   }
 }

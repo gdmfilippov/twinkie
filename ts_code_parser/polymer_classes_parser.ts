@@ -9,6 +9,8 @@ import {
   isStringLiteral,
   isTaggedTemplateExpression,
   isVariableDeclaration,
+  SymbolFlags,
+  Symbol,
   Type,
   TypeChecker,
 } from 'typescript';
@@ -18,11 +20,40 @@ export function isPolymerElement(classDeclarationInfo: ClassDeclarationInfo) {
   return extendsPolymerElement(classDeclarationInfo.type);
 }
 
+// See https://www.typescriptlang.org/docs/handbook/basic-types.html
+export enum TsPropertyType {
+  NotSet = 0,
+  Boolean = 1,
+  Number = 2,
+  Enum = 4,
+  Other = 8, // String, Array, Tuple, Unknown, Any, Void, Null, Undefined, Never, Object
+}
+
+export enum DeclaredPolymerPropertyType {
+  Boolean = 'Boolean',
+  Date = 'Date',
+  Number = 'Number',
+  String = 'String',
+  Object = 'Object',
+}
+
 export interface PolymerElementInfo {
   declaration: ClassDeclarationInfo;
   className: string; // The name in ts.classDeclaration can be undefined, but PolymerElement must be defined with class name
   tag: string;
   template?: string;
+  properties: PolymerPropertyInfo[];
+}
+
+export interface PolymerPropertyInfo {
+  tsPropertyType: TsPropertyType;
+  declaredPolymerPropertyType: DeclaredPolymerPropertyType;
+  reflectToAttribute: boolean;
+}
+
+export interface EnumPolymerPropertyInfo extends PolymerPropertyInfo {
+  tsPropertyType: TsPropertyType.Enum;
+  attributeValues: string[];
 }
 
 export function getPolymerElements(
@@ -49,6 +80,10 @@ export function getPolymerElementInfo(
     tag: getTagName(polymerElementClassDeclarationInfo),
     className: className.text,
     template: getPolymerElementTemplate(
+      typeChecker,
+      polymerElementClassDeclarationInfo
+    ),
+    properties: getPolymerElementProperties(
       typeChecker,
       polymerElementClassDeclarationInfo
     ),
@@ -174,4 +209,21 @@ function getPolymerElementTemplate(
     return getTemplateFromExpression(returnStatement.expression);
   }
   throw new Error('Internal error');
+}
+
+function getPolymerElementProperties(
+  typeChecker: TypeChecker,
+  polymerElementClassDeclarationInfo: ClassDeclarationInfo
+): PolymerPropertyInfo[] {
+  const symbols = polymerElementClassDeclarationInfo.type.getProperties().filter(s => s.flags & SymbolFlags.Property)
+    .map(s => getTsPropertyType(typeChecker, s));
+  return [];
+}
+
+function getTsPropertyType(typeChecker: TypeChecker, symbol: Symbol): TsPropertyType {
+  const enumValues = new Set<string>();
+  let tsPropertyType: TsPropertyType = TsPropertyType.NotSet;
+  symbol.declarations.map(declaration => typeChecker.getTypeOfSymbolAtLocation(symbol, declaration))
+
+
 }

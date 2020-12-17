@@ -5,6 +5,7 @@ import {getPolymerElements} from './polymer_classes_parser';
 // Inteface must not include any types from typescript library
 export interface PolymerElementInfoJSON {
   tag: string;
+  sourceFile: string;
   template?: PolymerTemplateString;
   className: string;
 }
@@ -29,7 +30,7 @@ export function getPolymerElementJsons(
   const polymerElements = getPolymerElements(typeChecker, programClasses);
 
   return polymerElements.map(pe => {
-    return {
+    const jsonElement: PolymerElementInfoJSON = {
       sourceFile: pe.declaration.sourceFile.fileName,
       className: pe.className,
       tag: pe.tag,
@@ -40,5 +41,6 @@ export function getPolymerElementJsons(
           }
         : undefined,
     };
+    return jsonElement;
   });
 }
