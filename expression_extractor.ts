@@ -270,8 +270,45 @@ function stripNativeBindingPostfixes(expressions: string[]) {
   });
 }
 
-export function extractExpression(str: string, aliasMap: AliasMap) {
-  let ret: string[] = [];
+export enum BindingType {
+  OneWay,
+  TwoWay,
+}
+
+export interface RawExpression {
+  text: string;
+  bindingType: BindingType;
+}
+
+export type ExpressionPart = RawExpression | string;
+
+export function isRawExpression(part: ExpressionPart): part is RawExpression {
+  return part instanceof Object;
+}
+
+function getNextMatch(
+  match1: RegExpMatchArray | null,
+  match2: RegExpMatchArray | null
+): RegExpMatchArray | null {
+  if (
+    match1 &&
+    match1.index !== undefined &&
+    match2 &&
+    match2.index !== undefined
+  ) {
+    return match1.index < match2.index ? match1 : match2;
+  }
+  if (match1 && match1.index !== undefined) {
+    return match1;
+  }
+  if (match2 && match2.index !== undefined) {
+    return match2;
+  }
+  return null;
+}
+
+export function extractBindingParts(str: string): ExpressionPart[] {
+  const ret: ExpressionPart[] = [];
   let startingIndex = 0;
 
   if (str.length === 0) {
@@ -283,38 +320,29 @@ export function extractExpression(str: string, aliasMap: AliasMap) {
     const twoWayMatch = substring.match(TWO_WAY_BINDING_REGEX);
     const oneWayMatch = substring.match(ONE_WAY_BINDING_REGEX);
 
-    if (
-      oneWayMatch &&
-      oneWayMatch.index !== undefined &&
-      twoWayMatch &&
-      twoWayMatch.index !== undefined
-    ) {
-      if (oneWayMatch.index < twoWayMatch.index) {
-        ret.push(oneWayMatch[1]);
-        startingIndex += oneWayMatch.index + oneWayMatch[0].length;
-      } else {
-        ret.push(twoWayMatch[1]);
-        startingIndex += twoWayMatch.index + twoWayMatch[0].length;
-      }
-
-      continue;
+    const nextMatch = getNextMatch(oneWayMatch, twoWayMatch);
+    if (!nextMatch || nextMatch.index === undefined) {
+      if(substring.length > 0)
+        ret.push(substring);
+      // no more matches time to bail.
+      return ret;
     }
-
-    if (oneWayMatch && oneWayMatch.index !== undefined) {
-      ret.push(oneWayMatch[1]);
-      startingIndex += oneWayMatch.index + oneWayMatch[0].length;
-      continue;
+    if (nextMatch.index > 0) {
+      ret.push(str.slice(startingIndex, startingIndex + nextMatch.index));
     }
-
-    if (twoWayMatch && twoWayMatch.index !== undefined) {
-      ret.push(twoWayMatch[1]);
-      startingIndex += twoWayMatch.index + twoWayMatch[0].length;
-      continue;
-    }
-
-    // no more matches time to bail.
-    break;
+    ret.push({
+      text: nextMatch[1],
+      bindingType:
+        nextMatch === oneWayMatch ? BindingType.OneWay : BindingType.TwoWay,
+    });
+    startingIndex += nextMatch.index + nextMatch[0].length;
   }
+}
+
+export function extractExpression(str: string, aliasMap: AliasMap) {
+  let ret = extractBindingParts(str)
+    .filter(isRawExpression)
+    .map(expr => expr.text);
 
   ret = removeObserverPostfixes(
     stripNegationPrefixes(stripNativeBindingPostfixes(ret))

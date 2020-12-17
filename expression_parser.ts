@@ -219,12 +219,20 @@ export enum SyntaxNodeKind {
   WildcardPath = 'WildcardPath',
 }
 
+export type PolymerSyntaxNode =
+  | NegationExpression
+  | PropertyAccessExpression
+  | Identifier
+  | MethodCallExpression
+  | LiteralExpression
+  | WildcardPathExpression;
+
 /**
  * PolymerExpression defines the top level expression type.
  *  '!' is allowed only at the start of polymer expression and at the start
  *  of function argument
  */
-type PolymerExpression = NegationExpression | NoNegationExpression;
+export type PolymerExpression = NegationExpression | NoNegationExpression;
 
 export interface SyntaxNode {
   type: SyntaxNodeKind;

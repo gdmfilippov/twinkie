@@ -4,7 +4,6 @@
     "module": "commonjs",
     "target": "es2017",
     "noImplicitAny": true,
-    "inlineSourceMap": true,
     "noEmitOnError": false,
     "strictNullChecks": true,
     "noImplicitReturns": true,
@@ -13,5 +12,5 @@
     "lib": ["es2017"]
   },
   "exclude": ["node_modules"],
-  "include": ["*.ts", "*.d.ts"]
+  "include": ["*.ts", "*.d.ts", "ts_code_parser/*.ts", "template_transpiler/**/*.ts", "app/*.ts"]
 }

@@ -1,23 +1,26 @@
 {
   "dependencies": {
-    "cheerio": "^1.0.0-rc.2"
+    "cheerio": "^1.0.0-rc.2",
+    "glob": "^7.1.6",
+    "minimatch": "^3.0.4"
   },
   "scripts": {
     "test": "mocha -r ts-node/register *_test.ts",
     "test-watch": "mocha -r ts-node/register --watch --watch-files ./, *_test.ts",
     "build": "tsc",
     "format": "gts fix",
-    "format-lint": "gts lint"
+    "format-lint": "gts lint",
+    "typescript": "^4.0.5"
   },
   "devDependencies": {
     "@types/chai": "^4.2.14",
     "@types/cheerio": "^0.22.2",
+    "@types/minimatch": "^3.0.3",
     "@types/mocha": "^8.0.4",
     "chai": "^4.2.0",
     "gts": "^3.0.2",
     "mocha": "^8.2.1",
-    "ts-node": "^9.0.0",
-    "typescript": "^4.0.5"
+    "ts-node": "^9.0.0"
   },
   "name": "twinkie",
   "description": "Automatic template interfaces from polymer template files",

@@ -1,5 +1,23 @@
+/**
+ * @license
+ * Copyright (C) 2020 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import {
   escapeLeadingUnderscores,
+  Declaration,
   Expression,
   isCallExpression,
   isGetAccessor,
@@ -8,14 +26,37 @@ import {
   isReturnStatement,
   isStringLiteral,
   isTaggedTemplateExpression,
+  isPropertyAssignment,
   isVariableDeclaration,
+  isObjectLiteralExpression,
+  NodeArray,
+  Symbol,
+  SymbolFlags,
   Type,
   TypeChecker,
 } from 'typescript';
 import {ClassDeclarationInfo} from './code_parser';
+import {getPropertyName} from '../template_transpiler/code_util';
 
 export function isPolymerElement(classDeclarationInfo: ClassDeclarationInfo) {
   return extendsPolymerElement(classDeclarationInfo.type);
+}
+
+// See https://www.typescriptlang.org/docs/handbook/basic-types.html
+export enum TsPropertyType {
+  NotSet = 0,
+  Boolean = 1,
+  Number = 2,
+  Enum = 4,
+  Other = 8, // String, Array, Tuple, Unknown, Any, Void, Null, Undefined, Never, Object
+}
+
+export enum DeclaredPolymerPropertyType {
+  Boolean = 'Boolean',
+  Date = 'Date',
+  Number = 'Number',
+  String = 'String',
+  Object = 'Object',
 }
 
 export interface PolymerElementInfo {
@@ -23,6 +64,14 @@ export interface PolymerElementInfo {
   className: string; // The name in ts.classDeclaration can be undefined, but PolymerElement must be defined with class name
   tag: string;
   template?: string;
+  properties: PolymerPropertyInfo[];
+}
+
+export interface PolymerPropertyInfo {
+  name: string;
+  tsPropertyType: Type;
+  declaredPolymerPropertyType: DeclaredPolymerPropertyType;
+  reflectToAttribute: boolean;
 }
 
 export function getPolymerElements(
@@ -49,6 +98,10 @@ export function getPolymerElementInfo(
     tag: getTagName(polymerElementClassDeclarationInfo),
     className: className.text,
     template: getPolymerElementTemplate(
+      typeChecker,
+      polymerElementClassDeclarationInfo
+    ),
+    properties: getPolymerElementProperties(
       typeChecker,
       polymerElementClassDeclarationInfo
     ),
@@ -85,22 +138,7 @@ function isPolymerElementType(type: Type): boolean {
 }
 
 function getTagName(elementDeclaration: ClassDeclarationInfo): string {
-  const decorators = elementDeclaration.declaration.decorators;
-  if (!decorators) {
-    throw new Error('Decorator not found on class');
-  }
-  for (const decorator of decorators) {
-    const expression = decorator.expression;
-    if (!isCallExpression(expression)) {
-      continue;
-    }
-    if (
-      !isIdentifier(expression.expression) ||
-      expression.expression.text !== 'customElement'
-    ) {
-      continue;
-    }
-    const args = expression.arguments;
+  const argParser: DecoratorArgumentParser<string> = args => {
     if (args.length !== 1) {
       throw new Error('Invalid decorator');
     }
@@ -109,8 +147,50 @@ function getTagName(elementDeclaration: ClassDeclarationInfo): string {
       throw new Error('Unsupported argument type in decorator');
     }
     return tagNameArg.text;
+  };
+  const customElementTagNames = getDecorators(
+    [elementDeclaration.declaration],
+    'customElement',
+    argParser
+  );
+  if (customElementTagNames.length === 0) {
+    throw new Error('Decorator not found on class');
   }
-  throw new Error("Can't find decorator tag");
+  if (customElementTagNames.length > 1) {
+    throw new Error('Found more than 1 decorator on class');
+  }
+  return customElementTagNames[0];
+}
+
+type DecoratorArgumentParser<T> = (args: NodeArray<Expression>) => T;
+
+function flat<T>(items: ReadonlyArray<ReadonlyArray<T> | undefined>): T[] {
+  return items.reduce((result: T[], nestedItems) => {
+    if (nestedItems) result.push(...nestedItems);
+    return result;
+  }, [] as T[]);
+}
+
+function getDecorators<T>(
+  declarations: Declaration[],
+  decoratorName: string,
+  argumentParser: DecoratorArgumentParser<T>
+): T[] {
+  const decorators = flat(declarations.map(d => d.decorators));
+  if (!decorators) return [];
+  const result: T[] = [];
+  for (const decorator of decorators) {
+    const expression = decorator.expression;
+    if (!isCallExpression(expression)) {
+      throw new Error('Unsupported decorator expression');
+    }
+    if (!isIdentifier(expression.expression)) {
+      throw new Error('Unsupported decorator expression.expression');
+    }
+    if (expression.expression.text !== decoratorName) continue;
+    result.push(argumentParser(expression.arguments));
+  }
+  return result;
 }
 
 function getTemplateFromExpression(expr: Expression) {
@@ -175,3 +255,89 @@ function getPolymerElementTemplate(
   }
   throw new Error('Internal error');
 }
+
+function getTsPropertyType(typeChecker: TypeChecker, tsProperty: Symbol): Type {
+  const types = tsProperty.declarations.map(decl =>
+    typeChecker.getTypeOfSymbolAtLocation(tsProperty, decl)
+  );
+  if (types.length > 1) {
+    const dedupTypes = [...new Set(types)];
+    if (dedupTypes.length > 1) {
+      throw new Error('Unsupported: property have multiple declaration');
+    }
+  }
+  return types[0];
+}
+
+function getPolymerElementProperties(
+  typeChecker: TypeChecker,
+  polymerElementClassDeclarationInfo: ClassDeclarationInfo
+): PolymerPropertyInfo[] {
+  const properties = polymerElementClassDeclarationInfo.type
+    .getProperties()
+    .filter(s => s.flags & SymbolFlags.Property);
+
+  const parsePropertyDecoratorArgs: DecoratorArgumentParser<DeclaredPolymerPropertyType> = args => {
+    if (args.length === 0) return DeclaredPolymerPropertyType.Object;
+    if (args.length > 1) {
+      throw new Error('@property decorator can have 0 or 1 argument');
+    }
+    const arg = args[0];
+    if (!isObjectLiteralExpression(arg)) {
+      throw new Error('Unsupported @property argument');
+    }
+    const typeProperty = arg.properties.find(
+      prop => getPropertyName(prop.name) === 'type'
+    );
+    if (!typeProperty) {
+      throw new Error('@property decorator must have type property');
+    }
+    if (!isPropertyAssignment(typeProperty)) {
+      throw new Error('Unsupported property initializer');
+    }
+    if (!isIdentifier(typeProperty.initializer)) {
+      throw new Error('Unsupported @property type initializer');
+    }
+    return typeProperty.initializer.text as DeclaredPolymerPropertyType;
+  };
+  const result: PolymerPropertyInfo[] = [];
+  for (const tsProperty of properties) {
+    const polymerTypes = getDecorators(
+      tsProperty.declarations,
+      'property',
+      parsePropertyDecoratorArgs
+    );
+    if (polymerTypes.length === 0) continue;
+    if (polymerTypes.length > 1) {
+      throw new Error('More than 1 @polymer decorator found');
+    }
+    result.push({
+      name: tsProperty.name,
+      tsPropertyType: getTsPropertyType(typeChecker, tsProperty),
+      declaredPolymerPropertyType: polymerTypes[0],
+      reflectToAttribute: false,
+    });
+  }
+  return result;
+}
+//
+// enum Abc {
+//   a = 'abc qwe',
+//   b = 'def',
+// }
+//
+// declare function toEnum<T extends string>(x: Partial<Record<T, null>>): T;
+//
+// const x: Abc = toEnum<Abc>({'abc qwe': null});
+// console.log(x);
+
+// function getTsPropertyType(
+//   typeChecker: TypeChecker,
+//   symbol: Symbol
+// ): TsPropertyType {
+//   const enumValues = new Set<string>();
+//   const tsPropertyType: TsPropertyType = TsPropertyType.NotSet;
+//   symbol.declarations.map(declaration =>
+//     typeChecker.getTypeOfSymbolAtLocation(symbol, declaration)
+//   );
+// }
