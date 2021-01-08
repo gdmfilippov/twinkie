@@ -18,6 +18,7 @@
 import {
   parsePolymerBindingExpression,
   PolymerExpression,
+  SyntaxNodeKind,
 } from '../expression_parser';
 import {TranspilerContext} from './context';
 import {CodeBuilder} from './code_builder';
@@ -28,20 +29,18 @@ import {
   isRawExpression,
 } from '../expression_extractor';
 import {isExpressionWithTheOnlyBinding, isTextOnlyExpression} from '../utils';
-import {PolymerPropertyInfo} from '../ts_code_parser/polymer_classes_parser';
+import {ElementsProperties, PolymerPropertyInfo} from '../ts_code_parser/polymer_classes_parser';
+import {SourceFile} from 'typescript';
 
 export interface ElementTranspiler {
   canTranspile(element: CheerioElement): boolean;
   transpile(
     transpiler: TemplateTranspiler,
     builder: CodeBuilder,
+    file: SourceFile,
     element: CheerioElement
   ): void;
 }
-
-// ElementsProperties maps tagName to the map of properties.
-// Map of properites maps propertyName to PolymerPropertyInfo
-export type ElementsProperties = Map<string, Map<string, PolymerPropertyInfo>>;
 
 export enum AttributeValueType {
   OneWayBinding = 'OneWayBinding', // [[abc]]
@@ -69,11 +68,11 @@ export class TemplateTranspiler {
     this.elementTranspilers.push(transpiler);
   }
 
-  public transpile(elements: CheerioElement[]) {
-    elements.forEach(el => this.transpileElement(el));
+  public transpile(file: SourceFile, elements: CheerioElement[]) {
+    elements.forEach(el => this.transpileElement(file, el));
   }
 
-  public transpileChildNodes(element: CheerioElement) {
+  public transpileChildNodes(file: SourceFile, element: CheerioElement) {
     let childNodes = element.childNodes;
     if (element.tagName === 'template') {
       if (
@@ -84,10 +83,10 @@ export class TemplateTranspiler {
       }
       childNodes = element.childNodes[0].childNodes;
     }
-    this.transpile(childNodes);
+    this.transpile(file, childNodes);
   }
 
-  public transpileElement(element: CheerioElement) {
+  public transpileElement(file: SourceFile, element: CheerioElement) {
     const elementTranspiler = this.elementTranspilers.find(transpiler =>
       transpiler.canTranspile(element)
     );
@@ -96,7 +95,7 @@ export class TemplateTranspiler {
         `Internal error: ${element.tagName} doesn't have transpiler.`
       );
     }
-    elementTranspiler.transpile(this, this.codeBuilder, element);
+    elementTranspiler.transpile(this, this.codeBuilder, file, element);
   }
 
   public transpilePolymerExpression(expression: PolymerExpression): string {
@@ -111,6 +110,8 @@ export class TemplateTranspiler {
   ): {
     attrValueType: AttributeValueType;
     tsExpression: string;
+    reverseBindingExpression: string;
+    negotiation?: boolean;
     stringExpression: string;
     whitespacesOnly: boolean;
   } {
@@ -122,6 +123,7 @@ export class TemplateTranspiler {
       return {
         attrValueType: AttributeValueType.TextOnly,
         tsExpression: stringExpression,
+        reverseBindingExpression: stringExpression,
         stringExpression,
         whitespacesOnly: attrValue.trim().length === 0,
       };
@@ -142,6 +144,7 @@ export class TemplateTranspiler {
       return {
         attrValueType: AttributeValueType.MultiBinding,
         tsExpression: stringExpression,
+        reverseBindingExpression: stringExpression,
         stringExpression,
         whitespacesOnly: false,
       };
@@ -151,12 +154,18 @@ export class TemplateTranspiler {
     const tsExpression = this.transpilePolymerExpression(
       parseResult.expression
     );
+    const reverseBindingExpression =
+      parseResult.expression.type === SyntaxNodeKind.Negation
+        ? this.transpilePolymerExpression(parseResult.expression.operand)
+        : tsExpression;
     return {
       attrValueType:
         bindingParts[0].bindingType === BindingType.OneWay
           ? AttributeValueType.OneWayBinding
           : AttributeValueType.TwoWayBinding,
       tsExpression,
+      reverseBindingExpression,
+      negotiation: parseResult.expression.type === SyntaxNodeKind.Negation,
       stringExpression: '`${' + tsExpression + '}`',
       whitespacesOnly: false,
     };

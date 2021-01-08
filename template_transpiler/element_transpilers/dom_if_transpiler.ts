@@ -19,6 +19,7 @@ import {OrdinaryTagTranspiler} from './ordinary_tag_transpiler';
 import {AttributeValueType, TemplateTranspiler} from '../transpiler';
 import {CodeBuilder} from '../code_builder';
 import {Logger} from '../../template_problems_logger';
+import {SourceFile} from 'typescript';
 
 export class DomIfElementTranspiler extends OrdinaryTagTranspiler {
   canTranspile(element: CheerioElement): boolean {
@@ -29,6 +30,7 @@ export class DomIfElementTranspiler extends OrdinaryTagTranspiler {
   transpile(
     transpiler: TemplateTranspiler,
     builder: CodeBuilder,
+    file: SourceFile,
     element: CheerioElement
   ): void {
     this.transpileTagWithoutChildren(
@@ -39,7 +41,7 @@ export class DomIfElementTranspiler extends OrdinaryTagTranspiler {
     );
 
     if (!element.attribs['if']) {
-      Logger.problemWithElement(element, 'The "if" attribute is missed.');
+      Logger.problemWithElement(file, element, 'The "if" attribute is missed.');
       return;
     }
     const condition = element.attribs['if'];
@@ -49,14 +51,15 @@ export class DomIfElementTranspiler extends OrdinaryTagTranspiler {
       tsCondition.attrValueType !== AttributeValueType.TwoWayBinding
     ) {
       Logger.problemWithAttribute(
+        file,
         element,
         'if',
-        'The "if" attrubute value must be a single binding expression.'
+        `The "if" attrubute value $'{condition}' must be a single binding expression.`
       );
     }
     builder.addLine(`if (${tsCondition.tsExpression})`);
     builder.startBlock();
-    transpiler.transpileChildNodes(element);
+    transpiler.transpileChildNodes(file, element);
     builder.endBlock();
   }
 }

@@ -14,26 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import {PolymerElementInfo} from '../ts_code_parser/polymer_classes_parser';
+import {Logger} from '../template_problems_logger';
+import {ClassDeclaration, SyntaxKind} from 'typescript';
 
-import {ElementTranspiler, TemplateTranspiler} from '../transpiler';
-import {CheerioElementType} from '../../utils';
-import {CodeBuilder} from '../code_builder';
-import {SourceFile} from 'typescript';
-
-export class BlacklistedElementTranspiler implements ElementTranspiler {
-  canTranspile(element: CheerioElement): boolean {
-    return (
-      element.type === CheerioElementType.Script ||
-      element.type === CheerioElementType.Style
+export function validateElementCode(element: PolymerElementInfo) {
+  if (!hasExportModifier(element.declaration.declaration)) {
+    Logger.problemWithClass(
+      element.declaration,
+      'The class must have export modifier'
     );
   }
+}
 
-  transpile(
-    transpiler: TemplateTranspiler,
-    builder: CodeBuilder,
-    file: SourceFile,
-    element: CheerioElement
-  ): void {
-    // ignore tag and its contents
-  }
+function hasExportModifier(classDeclaration: ClassDeclaration): boolean {
+  if (!classDeclaration.modifiers) return false;
+  return classDeclaration.modifiers.some(
+    m => m.kind === SyntaxKind.ExportKeyword
+  );
 }

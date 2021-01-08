@@ -73,6 +73,7 @@ export class CodeBuilder {
     tagName: string,
     target: string,
     sourceAttr: string,
+    negotation: boolean | undefined,
     transpiler: TemplateTranspiler
   ) {
     const value = transpiler.getValueForSet(
@@ -80,7 +81,11 @@ export class CodeBuilder {
       sourceAttr,
       `el.${kebabCaseToCamelCase(sourceAttr)}`
     );
-    this.addLine(`${target} = ${value};`);
+    if (negotation) {
+      this.addLine(`${target} = !${value};`);
+    } else {
+      this.addLine(`${target} = ${value};`);
+    }
   }
 
   subscribeEvent(

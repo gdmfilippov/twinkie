@@ -16,13 +16,14 @@
  */
 
 import {CodeBuilder} from './code_builder';
-import {ElementsProperties, TemplateTranspiler} from './transpiler';
+import {TemplateTranspiler} from './transpiler';
 import {BlacklistedElementTranspiler} from './element_transpilers/blacklisted_element_transpiler';
 import {DomRepeatElementTranspiler} from './element_transpilers/dom_repeat_transpiler';
 import {DomIfElementTranspiler} from './element_transpilers/dom_if_transpiler';
 import {OrdinaryTagTranspiler} from './element_transpilers/ordinary_tag_transpiler';
 import {TextTranspiler} from './element_transpilers/text_transpiler';
 import {CommentTranspiler} from './element_transpilers/comment_transpiler';
+import {ElementsProperties} from '../ts_code_parser/polymer_classes_parser';
 
 export function createTranspiler(
   builder: CodeBuilder,

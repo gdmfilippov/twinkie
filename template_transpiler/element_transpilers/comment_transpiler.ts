@@ -18,6 +18,7 @@
 import {ElementTranspiler, TemplateTranspiler} from '../transpiler';
 import {CodeBuilder} from '../code_builder';
 import {CheerioElementType} from '../../utils';
+import {SourceFile} from 'typescript';
 
 export class CommentTranspiler implements ElementTranspiler {
   canTranspile(element: CheerioElement): boolean {
@@ -27,6 +28,7 @@ export class CommentTranspiler implements ElementTranspiler {
   transpile(
     transpiler: TemplateTranspiler,
     builder: CodeBuilder,
+    file: SourceFile,
     element: CheerioElement
   ): void {
     // Ignore comments

@@ -15,17 +15,44 @@
  * limitations under the License.
  */
 import {ClassDeclarationInfo} from './ts_code_parser/code_parser';
+import {SourceFile} from 'typescript';
 
 class TemplateProblemsLogger {
+  private problems: string[] = [];
+
   problemWithAttribute(
+    file: SourceFile,
     element: CheerioElement,
     attrName: string,
     message: string
-  ) {}
+  ) {
+    this.problems.push(
+      `Problem with template in file: ${file.fileName}, element: ${element.tagName}, attribute ${attrName}: ${message}`
+    );
+  }
 
-  problemWithElement(element: CheerioElement, message: string) {}
+  problemWithElement(
+    file: SourceFile,
+    element: CheerioElement,
+    message: string
+  ) {
+    this.problems.push(
+      `Problem with template in file: ${file.fileName}, element: ${element.tagName}: ${message}`
+    );
+  }
 
-  problemWithClass(classDeclaration: ClassDeclarationInfo, message: string) {}
+  problemWithClass(classDeclaration: ClassDeclarationInfo, message: string) {
+    this.problems.push(
+      `Problem with class in file: ${
+        classDeclaration.sourceFile.fileName
+      }, class: ${classDeclaration.declaration.name?.getText()}: ${message}`
+    );
+  }
+
+  public getProblems(): string[] {
+    return [...this.problems];
+  }
+
 }
 
 export const Logger = new TemplateProblemsLogger();

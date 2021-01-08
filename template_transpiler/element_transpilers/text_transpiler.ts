@@ -22,6 +22,7 @@ import {
 } from '../transpiler';
 import {CheerioElementType} from '../../utils';
 import {CodeBuilder} from '../code_builder';
+import {SourceFile} from 'typescript';
 
 export class TextTranspiler implements ElementTranspiler {
   canTranspile(element: CheerioElement): boolean {
@@ -31,6 +32,7 @@ export class TextTranspiler implements ElementTranspiler {
   transpile(
     transpiler: TemplateTranspiler,
     builder: CodeBuilder,
+    file: SourceFile,
     element: CheerioElement
   ): void {
     const content = transpiler.transpileAttributeValue(element.nodeValue);

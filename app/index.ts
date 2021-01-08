@@ -19,153 +19,102 @@ import {createProgramFromTsConfig} from '../ts_code_parser/tsconfig_parser';
 import {createSourceFileFilter} from '../ts_code_parser/source_file_filter';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as Cheerio from 'cheerio';
-import {createTranspiler} from '../template_transpiler/default_transpiler';
-import {CodeBuilder} from '../template_transpiler/code_builder';
-import {ElementsProperties} from '../template_transpiler/transpiler';
 import {getProgramClasses} from '../ts_code_parser/code_parser';
-import {
-  getPolymerElements,
-  PolymerElementInfo,
-} from '../ts_code_parser/polymer_classes_parser';
-import {ClassDeclaration, SyntaxKind} from 'typescript';
+import {getPolymerElements} from '../ts_code_parser/polymer_classes_parser';
+import {Diagnostic, DiagnosticCategory, Program, SourceFile} from 'typescript';
 import {Logger} from '../template_problems_logger';
+import {failWithDiagnostics} from '../ts_code_parser/ts_diagnostic_utils';
+import {getCommandLineOptions} from './command_line_parser';
+import {validateElementCode} from './element_code_validator';
+import {generateFiles} from './file_generator';
 
 async function main() {
-  const program = createProgramFromTsConfig(
-    '/Users/dmfilippov/gerrit/gerrit/polygerrit-ui/app/tsconfig.json'
-  );
+  const cmdLineOptions = getCommandLineOptions();
+  if (!cmdLineOptions.tsConfig || !cmdLineOptions.outputDirectory) {
+    throw new Error(`One or more mandatory arguments are missed. Usage:
+twinkie --tsconfig tsconfig.json --outdir output_dir [--files file_list] [--outtseconfig outtsconfig.json] [--devrun] [--checkerrors]
+    `);
+  }
+  const program = createProgramFromTsConfig(cmdLineOptions.tsConfig);
+  const baseDir = path.dirname(cmdLineOptions.tsConfig);
+  const inputFiles = cmdLineOptions.inputFiles;
+
   const programFiles = program.getSourceFiles().filter(
-    createSourceFileFilter({
-      include: ['*.ts'],
-      exclude: ['*.d.ts', '*_tets.ts'],
-    })
+    inputFiles
+      ? (sourceFile: SourceFile) => inputFiles.has(sourceFile.fileName)
+      : createSourceFileFilter({
+          include: ['*.ts'],
+          exclude: ['*.d.ts', '*_test.ts'],
+        })
   );
+
   const typeChecker = program.getTypeChecker();
+  if (cmdLineOptions.checkTsErrors) {
+    assertNoProgramErrors(program);
+  }
 
   const programClasses = getProgramClasses(typeChecker, programFiles);
-
   const polymerElements = getPolymerElements(typeChecker, programClasses);
 
-  const elementsProperties: ElementsProperties = new Map(
-    polymerElements.map(element => [
-      element.tag,
-      new Map(element.properties.map(prop => [prop.name, prop])),
-    ])
+  polymerElements.forEach(el => validateElementCode(el));
+
+  const generatedFiles = generateFiles(
+    cmdLineOptions.outputDirectory,
+    baseDir,
+    cmdLineOptions.developerRun,
+    polymerElements,
+    programFiles
   );
 
-  const outDir = '/Users/dmfilippov/gerrit/gerrit/polygerrit-ui/app/tmpl_out';
-  for (const element of polymerElements) {
-    try {
-      generateFile(
-        path.join(outDir, element.className + '.ts'),
-        element,
-        elementsProperties
-      );
-    } catch (e) {
-      console.log(`Error in ${element.className}: ${e}`);
-      console.log(element.template);
-      throw e;
-    }
+  if (cmdLineOptions.outputTsConfig) {
+    const allProgramFilesNames = programFiles.map(sf => sf.fileName);
+    const tsconfigContent = {
+      extends: cmdLineOptions.tsConfig,
+      compilerOptions: {
+        outDir: null,
+        incremental: false,
+        noEmit: true,
+      },
+      files: [...allProgramFilesNames, generatedFiles],
+    };
+    fs.writeFileSync(
+      cmdLineOptions.outputTsConfig,
+      JSON.stringify(tsconfigContent, null, 2)
+    );
+  }
+
+  const codeProblems = Logger.getProblems();
+  if (codeProblems.length > 0) {
+    throw new Error(
+      'The following problems found in the code:\n' + codeProblems.join('\n')
+    );
   }
 }
 
-function removeTsFileExtension(filePath: string): string {
-  return filePath.endsWith('.ts') ? filePath.slice(0, -3) : filePath;
+function assertNoProgramErrors(program: Program) {
+  assertNoErrors('getGlobalDiagnostics', program.getGlobalDiagnostics());
+  assertNoErrors('getSemanticDiagnostics', program.getSemanticDiagnostics());
+  assertNoErrors('getSyntacticDiagnostics', program.getSyntacticDiagnostics());
 }
 
-const fileHeader = `
-import {PolymerDeepPropertyChange} from '@polymer/polymer/interfaces';
-import '@polymer/polymer/lib/elements/dom-if';
-import '@polymer/polymer/lib/elements/dom-repeat';
-
-export interface PolymerDomRepeatEventModel<T> {
-  /**
-   * The item corresponding to the element in the dom-repeat.
-   */
-  item: T;
-
-  /**
-   * The index of the element in the dom-repeat.
-   */
-  index: number;
-  get: (name: string) => T;
-  set: (name: string, val: T) => void;
-}
-
-declare function wrapInPolymerDomRepeatEvent<T, U>(event: T, item: U): T & {model: PolymerDomRepeatEventModel<U>};
-declare function setTextContent(content: unknown): void;
-declare function useVars(...args: unknown[]): void;
-
-type UnionToIntersection<T> = (
-  T extends any ? (v: T) => void : never
-) extends (v: infer K) => void
-  ? K
-  : never;
-
-type AddNonDefinedProperties<T, P> = {
-  [K in keyof P]: K extends keyof T ? T[K] : undefined;
-};
-
-type FlatUnion<T, TIntersect> = T extends any
-  ? AddNonDefinedProperties<T, TIntersect>
-  : never;
-
-type AllUndefined<T> = {
-  [P in keyof T]: undefined;
-}
-
-type UnionToAllUndefined<T> = T extends any ? AllUndefined<T> : any
-
-type Flat<T> = FlatUnion<T, UnionToIntersection<UnionToAllUndefined<T>>>;
-
-
-declare function __f<T>(obj: T): Flat<NonNullable<T>>;
-
-declare function pc<T>(obj: T): PolymerDeepPropertyChange<T, T>;
-
-declare function convert<T, U extends T>(obj: T): U;
-`;
-
-function hasExportModifier(classDeclaration: ClassDeclaration): boolean {
-  if (!classDeclaration.modifiers) return false;
-  return classDeclaration.modifiers.some(m => m.kind === SyntaxKind.ExportKeyword);
-}
-
-function generateFile(
-  targetFile: string,
-  element: PolymerElementInfo,
-  elementsProperties: ElementsProperties
+function assertNoErrors(
+  diagnotsticName: string,
+  diagnostics: readonly Diagnostic[]
 ) {
-  if (!hasExportModifier(element.declaration.declaration)) {
-    Logger.problemWithClass(element.declaration, `The class must have export modifier`);
-  }
-  const builder = new CodeBuilder();
-  builder.addLine(
-    `import {${element.className}} from '${removeTsFileExtension(
-      element.declaration.sourceFile.fileName
-    )}';`
+  const errorDiagnostics = diagnostics.filter(
+    diag => diag.category === DiagnosticCategory.Error
   );
-  builder.addLine(fileHeader);
-
-  builder.addLine(
-    `export class ${element.className}Check extends ${element.className}`
-  );
-  builder.startBlock();
-  builder.addLine('templateCheck()');
-  builder.startBlock();
-  if (element.template) {
-    const parsed = Cheerio.parseHTML(element.template);
-    createTranspiler(builder, elementsProperties).transpile(parsed);
+  if (errorDiagnostics.length > 0) {
+    failWithDiagnostics(
+      `The ${diagnotsticName} returns errors`,
+      errorDiagnostics
+    );
   }
-  builder.endBlock();
-  builder.endBlock();
-
-  fs.writeFileSync(targetFile, builder.getCode());
 }
 
 main().catch(error => {
   console.error(error.message);
   console.error(error.stack);
-  throw error;
+  // eslint-disable-next-line no-process-exit
+  process.exit(1);
 });

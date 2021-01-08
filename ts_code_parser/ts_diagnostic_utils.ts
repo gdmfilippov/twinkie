@@ -45,7 +45,7 @@ function getFormattedDiagnostic(d: Diagnostic) {
 export function failWithDiagnostic(msg: string, diagnostic: Diagnostic) {
   throw new Error(`${msg}:\n${getFormattedDiagnostic(diagnostic)}`);
 }
-export function failWithDiagnostics(msg: string, diagnostics: Diagnostic[]) {
+export function failWithDiagnostics(msg: string, diagnostics: readonly Diagnostic[]) {
   const diagnosticsTexts = diagnostics.map(d =>
     getFormattedDiagnostic(d).trim()
   );

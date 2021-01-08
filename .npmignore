@@ -1,2 +1,12 @@
 *_test.ts
 *_test.js
+.idea
+.vscode
+*.d.ts
+*.map
+.eslintrc.json
+tsconfig.json
+.eslintignore
+.gitignorerevs
+*.yml
+*.tgz

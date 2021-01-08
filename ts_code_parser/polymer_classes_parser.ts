@@ -30,6 +30,7 @@ import {
   isVariableDeclaration,
   isObjectLiteralExpression,
   NodeArray,
+  SourceFile,
   Symbol,
   SymbolFlags,
   Type,
@@ -63,8 +64,13 @@ export interface PolymerElementInfo {
   declaration: ClassDeclarationInfo;
   className: string; // The name in ts.classDeclaration can be undefined, but PolymerElement must be defined with class name
   tag: string;
-  template?: string;
+  template?: PolymerTemplateInfo;
   properties: PolymerPropertyInfo[];
+}
+
+export interface PolymerTemplateInfo {
+  content: string;
+  sourceFile: SourceFile;
 }
 
 export interface PolymerPropertyInfo {
@@ -81,6 +87,21 @@ export function getPolymerElements(
   return classes
     .filter(isPolymerElement)
     .map(classInfo => getPolymerElementInfo(typeChecker, classInfo));
+}
+
+// ElementsProperties maps tagName to the map of properties.
+// Map of properites maps propertyName to PolymerPropertyInfo
+export type ElementsProperties = Map<string, Map<string, PolymerPropertyInfo>>;
+
+export function getElementsProperties(
+  polymerElements: PolymerElementInfo[]
+): ElementsProperties {
+  return new Map(
+    polymerElements.map(element => [
+      element.tag,
+      new Map(element.properties.map(prop => [prop.name, prop])),
+    ])
+  );
 }
 
 export function getPolymerElementInfo(
@@ -209,7 +230,7 @@ function getTemplateFromExpression(expr: Expression) {
 function getPolymerElementTemplate(
   typeChecker: TypeChecker,
   polymerElementClassDeclarationInfo: ClassDeclarationInfo
-): string | undefined {
+): PolymerTemplateInfo | undefined {
   const templateGetterSymbol = polymerElementClassDeclarationInfo.type.symbol.exports?.get(
     escapeLeadingUnderscores('template')
   );
@@ -248,10 +269,16 @@ function getPolymerElementTemplate(
     if (!isVariableDeclaration(declaration) || !declaration.initializer) {
       throw new Error('Internal error');
     }
-    return getTemplateFromExpression(declaration.initializer);
+    return {
+      sourceFile: declaration.getSourceFile(),
+      content: getTemplateFromExpression(declaration.initializer),
+    };
   } else if (isTaggedTemplateExpression(returnStatement.expression)) {
     // Case 2: the template defined inside template property
-    return getTemplateFromExpression(returnStatement.expression);
+    return {
+      sourceFile: returnStatement.getSourceFile(),
+      content: getTemplateFromExpression(returnStatement.expression),
+    };
   }
   throw new Error('Internal error');
 }
@@ -320,24 +347,3 @@ function getPolymerElementProperties(
   }
   return result;
 }
-//
-// enum Abc {
-//   a = 'abc qwe',
-//   b = 'def',
-// }
-//
-// declare function toEnum<T extends string>(x: Partial<Record<T, null>>): T;
-//
-// const x: Abc = toEnum<Abc>({'abc qwe': null});
-// console.log(x);
-
-// function getTsPropertyType(
-//   typeChecker: TypeChecker,
-//   symbol: Symbol
-// ): TsPropertyType {
-//   const enumValues = new Set<string>();
-//   const tsPropertyType: TsPropertyType = TsPropertyType.NotSet;
-//   symbol.declarations.map(declaration =>
-//     typeChecker.getTypeOfSymbolAtLocation(symbol, declaration)
-//   );
-// }

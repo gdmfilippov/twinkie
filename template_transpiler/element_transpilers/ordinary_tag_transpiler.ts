@@ -28,6 +28,7 @@ import {
   DeclaredPolymerPropertyType,
   PolymerPropertyInfo,
 } from '../../ts_code_parser/polymer_classes_parser';
+import {SourceFile} from 'typescript';
 
 export type AttributeFilter = (attrName: string, attrValue: string) => boolean;
 
@@ -55,11 +56,12 @@ export class OrdinaryTagTranspiler implements ElementTranspiler {
   transpile(
     transpiler: TemplateTranspiler,
     builder: CodeBuilder,
+    file: SourceFile,
     element: CheerioElement
   ): void {
     this.transpileTagWithoutChildren(transpiler, builder, element);
     // Transpile child elements
-    transpiler.transpile(element.childNodes);
+    transpiler.transpile(file, element.childNodes);
   }
 
   protected getActualTagName(element: CheerioElement) {
@@ -149,8 +151,9 @@ export class OrdinaryTagTranspiler implements ElementTranspiler {
       if (!transpiler.getCurrentContext().localVars.has(tsValue.tsExpression)) {
         builder.addValueSetFromProperty(
           this.getActualTagName(element),
-          tsValue.tsExpression,
+          tsValue.reverseBindingExpression,
           attrName,
+          tsValue.negotiation,
           transpiler
         );
       }

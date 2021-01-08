@@ -20,6 +20,7 @@ import {TemplateTranspiler} from '../transpiler';
 import {CodeBuilder} from '../code_builder';
 import {parsePolymerBindingExpression} from '../../expression_parser';
 import {Logger} from '../../template_problems_logger';
+import {SourceFile} from 'typescript';
 
 const specialDomRepatAttributes = new Set([
   'items',
@@ -34,6 +35,7 @@ const specialDomRepatAttributes = new Set([
 const idRegexp = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function assertAttributeValueIsValidIdentifier(
+  file: SourceFile,
   element: CheerioElement,
   attrName: string
 ) {
@@ -41,9 +43,10 @@ function assertAttributeValueIsValidIdentifier(
   if (!attrValue) return;
   if (!attrValue.match(idRegexp)) {
     Logger.problemWithAttribute(
+      file,
       element,
       attrName,
-      'Attribute must be a valid identifier name'
+      `Attribute value '${attrValue}' must be a valid identifier`
     );
   }
 }
@@ -57,15 +60,16 @@ export class DomRepeatElementTranspiler extends OrdinaryTagTranspiler {
   transpile(
     transpiler: TemplateTranspiler,
     builder: CodeBuilder,
+    file: SourceFile,
     element: CheerioElement
   ): void {
     const items = element.attribs['items'];
 
-    assertAttributeValueIsValidIdentifier(element, 'as');
-    assertAttributeValueIsValidIdentifier(element, 'indexAs');
-    assertAttributeValueIsValidIdentifier(element, 'itemsIndexAs');
-    assertAttributeValueIsValidIdentifier(element, 'sort');
-    assertAttributeValueIsValidIdentifier(element, 'filter');
+    assertAttributeValueIsValidIdentifier(file, element, 'as');
+    assertAttributeValueIsValidIdentifier(file, element, 'indexAs');
+    assertAttributeValueIsValidIdentifier(file, element, 'itemsIndexAs');
+    assertAttributeValueIsValidIdentifier(file, element, 'sort');
+    assertAttributeValueIsValidIdentifier(file, element, 'filter');
 
     const as = element.attribs['as'] ?? 'item';
     const indexAs = element.attribs['indexAs'] ?? 'index';
@@ -80,9 +84,12 @@ export class DomRepeatElementTranspiler extends OrdinaryTagTranspiler {
       attrName => !specialDomRepatAttributes.has(attrName)
     );
     if (!items) {
-      Logger.problemWithElement(element, 'The "items" attribute is missed');
+      Logger.problemWithElement(
+        file,
+        element,
+        'The "items" attribute is missed'
+      );
     }
-
 
     const tsItems = transpiler.transpileAttributeValue(items);
     // Technically, all items can be either string or binding expression to string
@@ -119,7 +126,7 @@ export class DomRepeatElementTranspiler extends OrdinaryTagTranspiler {
       builder.endBlock();
     }
 
-    transpiler.transpileChildNodes(element);
+    transpiler.transpileChildNodes(file, element);
     transpiler.popContext();
     builder.endBlock();
     builder.endBlock();
